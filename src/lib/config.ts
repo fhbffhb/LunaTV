@@ -340,6 +340,16 @@ export function configSelfCheck(adminConfig: AdminConfig): AdminConfig {
   if (!adminConfig.LiveConfig || !Array.isArray(adminConfig.LiveConfig)) {
     adminConfig.LiveConfig = [];
   }
+  
+  // 确保网盘搜索配置有默认值
+  if (!adminConfig.NetDiskConfig) {
+    adminConfig.NetDiskConfig = {
+      enabled: true,                                    // 默认启用
+      pansouUrl: 'https://so.252035.xyz',               // 默认公益服务
+      timeout: 30,                                      // 默认30秒超时
+      enabledCloudTypes: ['baidu', 'aliyun', 'quark'] // 默认只启用百度、阿里、夸克三大主流网盘
+    };
+  }
 
   // 站长变更自检
   const ownerUser = process.env.USERNAME;
