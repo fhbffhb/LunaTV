@@ -73,6 +73,8 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           tags: ghcr.io/${{ steps.lowercase.outputs.owner }}/lunatv:${{ github.event.inputs.tag || 'latest' }}
           outputs: type=image,name=ghcr.io/${{ steps.lowercase.outputs.owner }}/lunatv,name-canonical=true,push=true
+          no-cache: true
+          pull: true
 
       - name: Export digest
         run: |
