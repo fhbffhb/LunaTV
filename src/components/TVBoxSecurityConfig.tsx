@@ -218,35 +218,45 @@ const TVBoxSecurityConfig = ({ config, refreshConfig }: TVBoxSecurityConfigProps
                 <label className='block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1'>
                   访问Token
                 </label>
-                <div className='flex gap-2'>
-                  <input
-                    type={showToken ? 'text' : 'password'}
-                    value={securitySettings.token}
-                    onChange={(e) => setSecuritySettings(prev => ({ ...prev, token: e.target.value }))}
-                    className='flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100'
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowToken(!showToken)}
-                    className='px-3 py-2 text-sm bg-gray-100 dark:bg-gray-600 hover:bg-gray-200 dark:hover:bg-gray-500 rounded-lg'
-                  >
-                    {showToken ? '隐藏' : '显示'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={copyToken}
-                    className='px-3 py-2 text-sm bg-blue-100 dark:bg-blue-900 hover:bg-blue-200 dark:hover:bg-blue-800 text-blue-700 dark:text-blue-300 rounded-lg flex items-center gap-1'
-                  >
-                    <Copy className='h-4 w-4' />
-                    复制
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setSecuritySettings(prev => ({ ...prev, token: generateToken() }))}
-                    className='px-3 py-2 text-sm bg-green-100 dark:bg-green-900 hover:bg-green-200 dark:hover:bg-green-800 text-green-700 dark:text-green-300 rounded-lg'
-                  >
-                    重新生成
-                  </button>
+                <div className='space-y-2'>
+                  {/* Token 输入框 */}
+                  <div className='flex gap-2'>
+                    <input
+                      type={showToken ? 'text' : 'password'}
+                      value={securitySettings.token}
+                      onChange={(e) => setSecuritySettings(prev => ({ ...prev, token: e.target.value }))}
+                      className='flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-sm break-all'
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowToken(!showToken)}
+                      className='px-3 py-2 text-sm bg-gray-100 dark:bg-gray-600 hover:bg-gray-200 dark:hover:bg-gray-500 rounded-lg whitespace-nowrap'
+                    >
+                      {showToken ? '隐藏' : '显示'}
+                    </button>
+                  </div>
+                  
+                  {/* 操作按钮 - 响应式布局 */}
+                  <div className='flex flex-col sm:flex-row gap-2'>
+                    <button
+                      type="button"
+                      onClick={copyToken}
+                      className='flex-1 sm:flex-none px-4 py-2 text-sm bg-blue-100 dark:bg-blue-900 hover:bg-blue-200 dark:hover:bg-blue-800 text-blue-700 dark:text-blue-300 rounded-lg flex items-center justify-center gap-2 transition-colors'
+                    >
+                      <Copy className='h-4 w-4' />
+                      复制Token
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSecuritySettings(prev => ({ ...prev, token: generateToken() }))}
+                      className='flex-1 sm:flex-none px-4 py-2 text-sm bg-green-100 dark:bg-green-900 hover:bg-green-200 dark:hover:bg-green-800 text-green-700 dark:text-green-300 rounded-lg flex items-center justify-center gap-2 transition-colors'
+                    >
+                      <svg className='h-4 w-4' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
+                        <path strokeLinecap='round' strokeLinejoin='round' strokeWidth='2' d='M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15' />
+                      </svg>
+                      重新生成
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -365,30 +375,40 @@ const TVBoxSecurityConfig = ({ config, refreshConfig }: TVBoxSecurityConfigProps
           <h3 className='text-sm font-semibold text-blue-900 dark:text-blue-300 mb-2'>
             TVBox配置URL
           </h3>
-          <div className='flex items-center gap-2 bg-white dark:bg-gray-800 px-3 py-2 rounded border'>
-            <code className='flex-1 text-sm text-gray-900 dark:text-gray-100 break-all'>
-              {generateExampleURL()}
-            </code>
-            <button
-              onClick={() => {
-                navigator.clipboard.writeText(generateExampleURL());
-                showMessage('success', 'URL已复制到剪贴板');
-              }}
-              className='p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded'
-            >
-              <Copy className='h-4 w-4' />
-            </button>
-            <a
-              href={generateExampleURL()}
-              target='_blank'
-              rel='noopener noreferrer'
-              className='p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded'
-            >
-              <ExternalLink className='h-4 w-4' />
-            </a>
+          <div className='space-y-2'>
+            {/* URL显示区域 */}
+            <div className='bg-white dark:bg-gray-800 px-3 py-2 rounded border'>
+              <code className='block text-sm text-gray-900 dark:text-gray-100 break-all leading-relaxed'>
+                {generateExampleURL()}
+              </code>
+            </div>
+            
+            {/* 操作按钮 */}
+            <div className='flex flex-col sm:flex-row gap-2'>
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(generateExampleURL());
+                  showMessage('success', 'URL已复制到剪贴板');
+                }}
+                className='flex-1 sm:flex-none px-4 py-2 text-sm bg-blue-100 dark:bg-blue-800 hover:bg-blue-200 dark:hover:bg-blue-700 text-blue-700 dark:text-blue-300 rounded-lg flex items-center justify-center gap-2 transition-colors'
+              >
+                <Copy className='h-4 w-4' />
+                复制URL
+              </button>
+              <a
+                href={generateExampleURL()}
+                target='_blank'
+                rel='noopener noreferrer'
+                className='flex-1 sm:flex-none px-4 py-2 text-sm bg-green-100 dark:bg-green-800 hover:bg-green-200 dark:hover:bg-green-700 text-green-700 dark:text-green-300 rounded-lg flex items-center justify-center gap-2 transition-colors'
+              >
+                <ExternalLink className='h-4 w-4' />
+                测试访问
+              </a>
+            </div>
           </div>
-          <p className='text-xs text-blue-700 dark:text-blue-400 mt-2'>
-            在TVBox中导入此URL即可使用。Base64格式请在URL后添加 &format=base64
+          
+          <p className='text-xs text-blue-700 dark:text-blue-400 mt-3'>
+            💡 在TVBox中导入此URL即可使用。Base64格式请在URL后添加 &format=base64
           </p>
         </div>
       </div>
