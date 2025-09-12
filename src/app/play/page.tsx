@@ -5,7 +5,7 @@
 import { Suspense, useEffect, useRef, useState } from 'react';
 
 import Hls from 'hls.js';
-import { Heart } from 'lucide-react';
+import { Heart, ChevronUp } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
 
 import EpisodeSelector from '@/components/EpisodeSelector';
@@ -66,6 +66,9 @@ function PlayPageClient() {
   // 豆瓣详情状态
   const [movieDetails, setMovieDetails] = useState<any>(null);
   const [loadingMovieDetails, setLoadingMovieDetails] = useState(false);
+
+  // 返回顶部按钮显示状态
+  const [showBackToTop, setShowBackToTop] = useState(false);
 
   // bangumi详情状态
   const [bangumiDetails, setBangumiDetails] = useState<any>(null);
@@ -558,8 +561,8 @@ function PlayPageClient() {
     if (sources.length === 1) return sources[0];
 
     // 使用全局统一的设备检测结果
-    const isIPad = /iPad/i.test(userAgent) || (userAgent.includes('Macintosh') && navigator.maxTouchPoints >= 1);
-    const isIOS = isIOSGlobal;
+    const _isIPad = /iPad/i.test(userAgent) || (userAgent.includes('Macintosh') && navigator.maxTouchPoints >= 1);
+    const _isIOS = isIOSGlobal;
     const isIOS13 = isIOS13Global;
     const isMobile = isMobileGlobal;
 
@@ -2622,19 +2625,39 @@ function PlayPageClient() {
               display: none !important;
             }
             
-            /* 弹幕配置面板自动适配定位 - 完全模仿ArtPlayer设置面板 */
+            /* 弹幕配置面板优化 - 修复全屏模式下点击问题 */
             .artplayer-plugin-danmuku .apd-config {
-              /* 确保相对定位容器不影响面板定位 */
               position: relative;
             }
             
             .artplayer-plugin-danmuku .apd-config-panel {
-              /* 改为绝对定位，相对于播放器容器 */
+              /* 使用绝对定位而不是fixed，让ArtPlayer的动态定位生效 */
+              position: absolute !important;
+              /* 保持ArtPlayer原版的默认left: 0，让JS动态覆盖 */
+              /* 保留z-index确保层级正确 */
+              z-index: 2147483647 !important; /* 使用最大z-index确保在全屏模式下也能显示在最顶层 */
+              /* 确保面板可以接收点击事件 */
+              pointer-events: auto !important;
+              /* 添加一些基础样式确保可见性 */
+              background: rgba(0, 0, 0, 0.8);
+              border-radius: 6px;
+              backdrop-filter: blur(10px);
+            }
+            
+            /* 全屏模式下的特殊优化 */
+            .artplayer[data-fullscreen="true"] .artplayer-plugin-danmuku .apd-config-panel {
+              /* 全屏时使用固定定位并调整位置 */
               position: fixed !important;
+              top: auto !important;
+              bottom: 80px !important; /* 距离底部控制栏80px */
+              right: 20px !important; /* 距离右边20px */
               left: auto !important;
-              right: 10px !important; /* 与ArtPlayer --art-padding 一致 */
-              transform: none !important; /* 移除任何变换 */
-              z-index: 91 !important; /* 比ArtPlayer设置面板(90)稍高 */
+              z-index: 2147483647 !important;
+            }
+            
+            /* 确保全屏模式下弹幕面板内部元素可点击 */
+            .artplayer[data-fullscreen="true"] .artplayer-plugin-danmuku .apd-config-panel * {
+              pointer-events: auto !important;
             }
           `;
           document.head.appendChild(style);
@@ -2664,7 +2687,7 @@ function PlayPageClient() {
               
               let isConfigVisible = false;
               
-              // 弹幕面板位置修正函数 - 完全模仿ArtPlayer设置面板算法
+              // 弹幕面板位置修正函数 - 完全模仿ArtPlayer原版位置算法
               const adjustPanelPosition = () => {
                 const player = document.querySelector('.artplayer');
                 if (!player || !configButton || !configPanel) return;
@@ -2672,12 +2695,40 @@ function PlayPageClient() {
                 try {
                   const panelElement = configPanel as HTMLElement;
                   
-                  // 始终清除内联样式，使用CSS默认定位
-                  panelElement.style.left = '';
+                  // 确保面板先恢复默认位置，模拟CSS默认行为
+                  panelElement.style.left = '0px';
                   panelElement.style.right = '';
                   panelElement.style.transform = '';
                   
-                  console.log('弹幕面板：使用CSS默认定位，自动适配屏幕方向');
+                  // 强制重排以获取准确的位置信息
+                  panelElement.offsetHeight;
+                  
+                  // 获取各元素的位置信息 - 严格按照ArtPlayer原版算法
+                  const controlRect = configButton.getBoundingClientRect();
+                  const panelRect = configPanel.getBoundingClientRect();
+                  const playerRect = player.getBoundingClientRect();
+                  
+                  // ArtPlayer原版位置计算算法
+                  const half = panelRect.width / 2 - controlRect.width / 2;
+                  const left = playerRect.left - (controlRect.left - half);
+                  const right = controlRect.right + half - playerRect.right;
+                  
+                  // 应用位置计算结果
+                  if (left > 0) {
+                    panelElement.style.left = `${-half + left}px`;
+                  } else if (right > 0) {
+                    panelElement.style.left = `${-half - right}px`;
+                  } else {
+                    panelElement.style.left = `${-half}px`;
+                  }
+                  
+                  console.log('弹幕面板位置已修正:', {
+                    controlRect: controlRect.left,
+                    panelWidth: panelRect.width,
+                    playerLeft: playerRect.left,
+                    half,
+                    finalLeft: panelElement.style.left
+                  });
                 } catch (error) {
                   console.warn('弹幕面板位置调整失败:', error);
                 }
@@ -2691,12 +2742,16 @@ function PlayPageClient() {
                 isConfigVisible = !isConfigVisible;
                 
                 if (isConfigVisible) {
-                  (configPanel as HTMLElement).style.display = 'block';
-                  // 显示后立即调整位置
-                  setTimeout(adjustPanelPosition, 10);
+                  (configPanel as HTMLElement).style.opacity = '1';
+                  (configPanel as HTMLElement).style.pointerEvents = 'all';
+                  // 显示后延迟调整位置，确保DOM完全更新
+                  setTimeout(() => {
+                    adjustPanelPosition();
+                  }, 50);
                   console.log('移动端弹幕配置面板：显示');
                 } else {
-                  (configPanel as HTMLElement).style.display = 'none';
+                  (configPanel as HTMLElement).style.opacity = '0';
+                  (configPanel as HTMLElement).style.pointerEvents = 'none';
                   console.log('移动端弹幕配置面板：隐藏');
                 }
               });
@@ -2711,6 +2766,29 @@ function PlayPageClient() {
                 });
                 console.log('已监听ArtPlayer resize事件，实现自动适配');
               }
+              
+              // 监听播放器设置面板的变化，确保弹幕菜单位置正确
+              const observePlayerChanges = () => {
+                const playerElement = document.querySelector('.artplayer');
+                if (!playerElement) return () => { /* no-op */ };
+                
+                const observer = new MutationObserver(() => {
+                  if (isConfigVisible) {
+                    setTimeout(adjustPanelPosition, 100);
+                  }
+                });
+                
+                observer.observe(playerElement, { 
+                  childList: true, 
+                  subtree: true, 
+                  attributes: true, 
+                  attributeFilter: ['class', 'style'] 
+                });
+                
+                return () => observer.disconnect();
+              };
+              
+              const disconnectObserver = observePlayerChanges();
               
               // 额外监听屏幕方向变化事件，确保完全自动适配
               const handleOrientationChange = () => {
@@ -2727,6 +2805,7 @@ function PlayPageClient() {
               const _cleanup = () => {
                 window.removeEventListener('orientationchange', handleOrientationChange);
                 window.removeEventListener('resize', handleOrientationChange);
+                disconnectObserver(); // 断开DOM变化观察器
               };
               
               // 点击其他地方自动隐藏
@@ -3184,6 +3263,58 @@ function PlayPageClient() {
       cleanupPlayer();
     };
   }, []);
+
+  // 返回顶部功能相关
+  useEffect(() => {
+    // 获取滚动位置的函数 - 专门针对 body 滚动
+    const getScrollTop = () => {
+      return document.body.scrollTop || 0;
+    };
+
+    // 使用 requestAnimationFrame 持续检测滚动位置
+    let isRunning = false;
+    const checkScrollPosition = () => {
+      if (!isRunning) return;
+
+      const scrollTop = getScrollTop();
+      const shouldShow = scrollTop > 300;
+      setShowBackToTop(shouldShow);
+
+      requestAnimationFrame(checkScrollPosition);
+    };
+
+    // 启动持续检测
+    isRunning = true;
+    checkScrollPosition();
+
+    // 监听 body 元素的滚动事件
+    const handleScroll = () => {
+      const scrollTop = getScrollTop();
+      setShowBackToTop(scrollTop > 300);
+    };
+
+    document.body.addEventListener('scroll', handleScroll, { passive: true });
+
+    return () => {
+      isRunning = false; // 停止 requestAnimationFrame 循环
+      // 移除 body 滚动事件监听器
+      document.body.removeEventListener('scroll', handleScroll);
+    };
+  }, []);
+
+  // 返回顶部功能
+  const scrollToTop = () => {
+    try {
+      // 根据调试结果，真正的滚动容器是 document.body
+      document.body.scrollTo({
+        top: 0,
+        behavior: 'smooth',
+      });
+    } catch (error) {
+      // 如果平滑滚动完全失败，使用立即滚动
+      document.body.scrollTop = 0;
+    }
+  };
 
   if (loading) {
     return (
@@ -3845,6 +3976,19 @@ function PlayPageClient() {
           </div>
         </div>
       </div>
+
+      {/* 返回顶部悬浮按钮 */}
+      <button
+        onClick={scrollToTop}
+        className={`fixed bottom-20 md:bottom-6 right-6 z-[500] w-12 h-12 bg-green-500/90 hover:bg-green-500 text-white rounded-full shadow-lg backdrop-blur-sm transition-all duration-300 ease-in-out flex items-center justify-center group ${
+          showBackToTop
+            ? 'opacity-100 translate-y-0 pointer-events-auto'
+            : 'opacity-0 translate-y-4 pointer-events-none'
+        }`}
+        aria-label='返回顶部'
+      >
+        <ChevronUp className='w-6 h-6 transition-transform group-hover:scale-110' />
+      </button>
     </PageLayout>
   );
 }
