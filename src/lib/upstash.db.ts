@@ -437,7 +437,7 @@ export class UpstashRedisStorage implements IStorage {
         return cached as PlayStatsResult;
       }
 
-      // 获取所有用户
+      // 重新计算统计数据
       const allUsers = await this.getAllUsers();
       const userStats: UserPlayStat[] = [];
       let totalWatchTime = 0;

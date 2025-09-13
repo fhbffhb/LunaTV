@@ -564,6 +564,7 @@ export abstract class BaseRedisStorage implements IStorage {
 
       // 重新计算统计数据
       const allUsers = await this.getAllUsers();
+
       const userStats: UserPlayStat[] = [];
       let totalWatchTime = 0;
       let totalPlays = 0;
