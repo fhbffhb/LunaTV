@@ -67,7 +67,14 @@ export async function GET(request: NextRequest) {
     }
 
     const result = await getShortDramaListInternal(category, pageNum, pageSize);
-    return NextResponse.json(result);
+
+    // 设置与网页端一致的缓存策略：列表缓存2小时，第一页缓存4小时
+    const maxAge = pageNum === 1 ? 4 * 60 * 60 : 2 * 60 * 60; // 秒
+    const response = NextResponse.json(result);
+    response.headers.set('Cache-Control', `public, max-age=${maxAge}, s-maxage=${maxAge}`);
+    response.headers.set('Vary', 'Accept-Encoding');
+
+    return response;
   } catch (error) {
     console.error('获取短剧列表失败:', error);
     return NextResponse.json(

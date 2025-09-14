@@ -66,7 +66,14 @@ export async function GET(request: NextRequest) {
     }
 
     const result = await searchShortDramasInternal(query, pageNum, pageSize);
-    return NextResponse.json(result);
+
+    // 搜索结果不设置长时间缓存，只缓存5分钟避免频繁请求
+    const maxAge = 5 * 60; // 5分钟转秒
+    const response = NextResponse.json(result);
+    response.headers.set('Cache-Control', `public, max-age=${maxAge}, s-maxage=${maxAge}`);
+    response.headers.set('Vary', 'Accept-Encoding');
+
+    return response;
   } catch (error) {
     console.error('搜索短剧失败:', error);
     return NextResponse.json(

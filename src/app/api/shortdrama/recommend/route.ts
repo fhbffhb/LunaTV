@@ -56,7 +56,14 @@ export async function GET(request: NextRequest) {
     }
 
     const result = await getRecommendedShortDramasInternal(categoryNum, pageSize);
-    return NextResponse.json(result);
+
+    // 设置与网页端一致的缓存策略：推荐缓存1小时
+    const maxAge = 1 * 60 * 60; // 1小时转秒
+    const response = NextResponse.json(result);
+    response.headers.set('Cache-Control', `public, max-age=${maxAge}, s-maxage=${maxAge}`);
+    response.headers.set('Vary', 'Accept-Encoding');
+
+    return response;
   } catch (error) {
     console.error('获取推荐短剧失败:', error);
     return NextResponse.json(

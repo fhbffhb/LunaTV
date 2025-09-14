@@ -54,7 +54,13 @@ export async function GET(request: NextRequest) {
       totalEpisodes: result.data!.totalEpisodes || 1,
     };
 
-    return NextResponse.json(response);
+    // 设置与网页端一致的缓存策略：解析结果缓存30分钟
+    const maxAge = 30 * 60; // 30分钟转秒
+    const finalResponse = NextResponse.json(response);
+    finalResponse.headers.set('Cache-Control', `public, max-age=${maxAge}, s-maxage=${maxAge}`);
+    finalResponse.headers.set('Vary', 'Accept-Encoding');
+
+    return finalResponse;
   } catch (error) {
     console.error('短剧解析失败:', error);
     return NextResponse.json(

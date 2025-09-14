@@ -70,7 +70,13 @@ export async function GET(request: NextRequest) {
       type_name: '短剧',
     };
 
-    return NextResponse.json(response);
+    // 设置与网页端一致的缓存策略：详情缓存4小时
+    const maxAge = 4 * 60 * 60; // 4小时转秒
+    const finalResponse = NextResponse.json(response);
+    finalResponse.headers.set('Cache-Control', `public, max-age=${maxAge}, s-maxage=${maxAge}`);
+    finalResponse.headers.set('Vary', 'Accept-Encoding');
+
+    return finalResponse;
   } catch (error) {
     console.error('短剧详情获取失败:', error);
     return NextResponse.json(

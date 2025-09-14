@@ -27,7 +27,14 @@ async function getShortDramaCategoriesInternal() {
 export async function GET() {
   try {
     const categories = await getShortDramaCategoriesInternal();
-    return NextResponse.json(categories);
+
+    // 设置与网页端一致的缓存策略：分类缓存4小时
+    const maxAge = 4 * 60 * 60; // 4小时转秒
+    const response = NextResponse.json(categories);
+    response.headers.set('Cache-Control', `public, max-age=${maxAge}, s-maxage=${maxAge}`);
+    response.headers.set('Vary', 'Accept-Encoding');
+
+    return response;
   } catch (error) {
     console.error('获取短剧分类失败:', error);
     return NextResponse.json(
