@@ -6,7 +6,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { ChevronUp } from 'lucide-react';
 
 import { getAuthInfoFromBrowserCookie } from '@/lib/auth';
-import { PlayRecord } from '@/lib/types';
+import { PlayRecord, ReleaseCalendarItem } from '@/lib/types';
 import {
   getCachedWatchingUpdates,
   getDetailedWatchingUpdates,
@@ -33,6 +33,9 @@ const PlayStatsPage: React.FC = () => {
   const [watchingUpdates, setWatchingUpdates] = useState<WatchingUpdate | null>(null);
   const [showWatchingUpdates, setShowWatchingUpdates] = useState(false);
   const [activeTab, setActiveTab] = useState<'admin' | 'personal'>('admin'); // 新增Tab状态
+  const [upcomingReleases, setUpcomingReleases] = useState<ReleaseCalendarItem[]>([]);
+  const [upcomingLoading, setUpcomingLoading] = useState(false);
+  const [upcomingInitialized, setUpcomingInitialized] = useState(false);
 
   // 检查用户权限
   useEffect(() => {
@@ -167,15 +170,137 @@ const PlayStatsPage: React.FC = () => {
     console.log('fetchStats 完成');
   }, [isAdmin, fetchAdminStats, fetchUserStats]);
 
+  // 清理过期缓存
+  const cleanExpiredCache = useCallback(() => {
+    const CACHE_DURATION = 2 * 60 * 60 * 1000; // 2小时
+    const now = Date.now();
+
+    // 检查即将上映缓存
+    const cacheTimeKey = 'upcoming_releases_cache_time';
+    const cachedTime = localStorage.getItem(cacheTimeKey);
+
+    if (cachedTime) {
+      const age = now - parseInt(cachedTime);
+      if (age >= CACHE_DURATION) {
+        localStorage.removeItem('upcoming_releases_cache');
+        localStorage.removeItem(cacheTimeKey);
+        console.log('已清理过期的即将上映缓存');
+      }
+    }
+
+    // 清理其他可能过期的缓存项
+    const keysToCheck = [
+      'moontv_watching_updates',
+      'moontv_last_update_check',
+      'release_calendar_all_data',
+      'release_calendar_all_data_time'
+    ];
+
+    // 检查追番更新缓存（这个有不同的过期时间）
+    const watchingUpdateTime = localStorage.getItem('moontv_last_update_check');
+    if (watchingUpdateTime) {
+      const WATCHING_CACHE_DURATION = 30 * 60 * 1000; // 30分钟
+      const age = now - parseInt(watchingUpdateTime);
+      if (age >= WATCHING_CACHE_DURATION) {
+        localStorage.removeItem('moontv_watching_updates');
+        localStorage.removeItem('moontv_last_update_check');
+        console.log('已清理过期的追番更新缓存');
+      }
+    }
+
+    // 检查发布日历缓存
+    keysToCheck.forEach(key => {
+      if (key.endsWith('_time')) {
+        const timeStr = localStorage.getItem(key);
+        if (timeStr) {
+          const age = now - parseInt(timeStr);
+          if (age >= CACHE_DURATION) {
+            const dataKey = key.replace('_time', '');
+            localStorage.removeItem(dataKey);
+            localStorage.removeItem(key);
+            console.log(`已清理过期缓存: ${dataKey}`);
+          }
+        }
+      }
+    });
+  }, []);
+
+  // 获取即将上映的内容
+  const fetchUpcomingReleases = useCallback(async () => {
+    try {
+      setUpcomingLoading(true);
+
+      // 清理过期缓存
+      cleanExpiredCache();
+
+      // 检查本地缓存（2小时缓存）
+      const cacheKey = 'upcoming_releases_cache';
+      const cacheTimeKey = 'upcoming_releases_cache_time';
+      const CACHE_DURATION = 2 * 60 * 60 * 1000; // 2小时
+
+      const cachedData = localStorage.getItem(cacheKey);
+      const cachedTime = localStorage.getItem(cacheTimeKey);
+
+      if (cachedData && cachedTime) {
+        const age = Date.now() - parseInt(cachedTime);
+        if (age < CACHE_DURATION) {
+          console.log('使用缓存的即将上映数据，缓存年龄:', Math.round(age / 1000 / 60), '分钟');
+          setUpcomingReleases(JSON.parse(cachedData));
+          setUpcomingLoading(false);
+          setUpcomingInitialized(true); // 标记已经初始化完成
+          return;
+        }
+      }
+
+      // 获取未来2周的发布内容，包含更多电影
+      const today = new Date();
+      const twoWeeks = new Date(today);
+      twoWeeks.setDate(today.getDate() + 14);
+
+      const response = await fetch(
+        `/api/release-calendar?dateFrom=${today.toISOString().split('T')[0]}&dateTo=${twoWeeks.toISOString().split('T')[0]}`
+      );
+
+      if (response.ok) {
+        const data = await response.json();
+        const items = data.items || [];
+        setUpcomingReleases(items);
+
+        // 缓存数据
+        localStorage.setItem(cacheKey, JSON.stringify(items));
+        localStorage.setItem(cacheTimeKey, Date.now().toString());
+
+        console.log('获取即将上映内容成功:', items.length, '(从服务器)');
+      } else {
+        console.error('获取即将上映内容失败:', response.status);
+        // API失败时设置空数组，确保UI仍然显示
+        setUpcomingReleases([]);
+      }
+    } catch (error) {
+      console.error('获取即将上映内容失败:', error);
+      // 网络错误时设置空数组，确保UI仍然显示
+      setUpcomingReleases([]);
+    } finally {
+      setUpcomingLoading(false);
+      setUpcomingInitialized(true); // 标记已经初始化完成
+    }
+  }, [cleanExpiredCache]);
+
   // 处理刷新按钮点击
   const handleRefreshClick = async () => {
     console.log('刷新按钮被点击');
+    setLoading(true);
 
     try {
       // 清除追番更新缓存
       localStorage.removeItem('moontv_watching_updates');
       localStorage.removeItem('moontv_last_update_check');
-      console.log('已清除追番更新缓存');
+
+      // 清除即将上映缓存
+      localStorage.removeItem('upcoming_releases_cache');
+      localStorage.removeItem('upcoming_releases_cache_time');
+
+      console.log('已清除所有缓存');
 
       // 重新检查追番更新
       await checkWatchingUpdates();
@@ -185,8 +310,18 @@ const PlayStatsPage: React.FC = () => {
       await fetchStats();
       console.log('已重新获取统计数据');
 
+      // 重新获取 watchingUpdates
+      const details = getDetailedWatchingUpdates();
+      setWatchingUpdates(details);
+
+      // 重新获取即将上映内容
+      await fetchUpcomingReleases();
+      console.log('已重新获取即将上映内容');
+
     } catch (error) {
       console.error('刷新数据失败:', error);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -237,6 +372,13 @@ const PlayStatsPage: React.FC = () => {
     }
   }, [authInfo, fetchStats]);
 
+  // 获取即将上映内容
+  useEffect(() => {
+    if (authInfo) {
+      fetchUpcomingReleases();
+    }
+  }, [authInfo, fetchUpcomingReleases]);
+
   // 追番更新检查
   useEffect(() => {
     if (authInfo) {
@@ -253,6 +395,27 @@ const PlayStatsPage: React.FC = () => {
       };
 
       checkUpdates();
+
+      // 监听播放记录更新事件（修复删除记录后页面不立即更新的问题）
+      const handlePlayRecordsUpdate = () => {
+        console.log('播放记录更新，重新检查 watchingUpdates');
+        // 强制清除缓存，确保立即更新
+        localStorage.removeItem('moontv_watching_updates');
+        localStorage.removeItem('moontv_last_update_check');
+        // 重新检查追番更新状态
+        checkWatchingUpdates().then(() => {
+          const details = getDetailedWatchingUpdates();
+          setWatchingUpdates(details);
+          console.log('watchingUpdates 已更新:', details);
+        });
+      };
+
+      // 监听播放记录更新事件
+      window.addEventListener('playRecordsUpdated', handlePlayRecordsUpdate);
+
+      return () => {
+        window.removeEventListener('playRecordsUpdated', handlePlayRecordsUpdate);
+      };
     }
   }, [authInfo]);
 
@@ -446,47 +609,49 @@ const PlayStatsPage: React.FC = () => {
     return (
       <PageLayout activePath="/play-stats">
         <div className='max-w-7xl mx-auto px-4 py-8'>
-          {/* 页面标题、Tab切换和刷新按钮 */}
-          <div className='flex justify-between items-start mb-8'>
-            <div className='flex-1'>
-              <h1 className='text-3xl font-bold text-gray-900 dark:text-white'>
-                播放统计
-              </h1>
-              <p className='text-gray-600 dark:text-gray-400 mt-2'>
-                {activeTab === 'admin' ? '查看全站播放数据和趋势分析' : '查看您的个人播放记录和统计'}
-              </p>
+          {/* 页面标题和描述 */}
+          <div className='mb-6'>
+            <h1 className='text-3xl font-bold text-gray-900 dark:text-white'>
+              播放统计
+            </h1>
+            <p className='text-gray-600 dark:text-gray-400 mt-2'>
+              {activeTab === 'admin' ? '查看全站播放数据和趋势分析' : '查看您的个人播放记录和统计'}
+            </p>
+          </div>
 
-              {/* Tab 切换 */}
-              <div className='mt-6 border-b border-gray-200 dark:border-gray-700'>
-                <nav className='-mb-px flex space-x-8'>
-                  <button
-                    onClick={() => setActiveTab('admin')}
-                    className={`py-2 px-1 border-b-2 font-medium text-sm ${
-                      activeTab === 'admin'
-                        ? 'border-blue-500 text-blue-600 dark:text-blue-400'
-                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'
-                    }`}
-                  >
-                    全站统计
-                  </button>
-                  <button
-                    onClick={() => setActiveTab('personal')}
-                    className={`py-2 px-1 border-b-2 font-medium text-sm ${
-                      activeTab === 'personal'
-                        ? 'border-blue-500 text-blue-600 dark:text-blue-400'
-                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'
-                    }`}
-                  >
-                    我的统计
-                  </button>
-                </nav>
-              </div>
+          {/* Tab切换和刷新按钮 */}
+          <div className='flex justify-between items-end mb-8'>
+            {/* Tab 切换 */}
+            <div className='border-b border-gray-200 dark:border-gray-700'>
+              <nav className='-mb-px flex space-x-8'>
+                <button
+                  onClick={() => setActiveTab('admin')}
+                  className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                    activeTab === 'admin'
+                      ? 'border-blue-500 text-blue-600 dark:text-blue-400'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'
+                  }`}
+                >
+                  全站统计
+                </button>
+                <button
+                  onClick={() => setActiveTab('personal')}
+                  className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                    activeTab === 'personal'
+                      ? 'border-blue-500 text-blue-600 dark:text-blue-400'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'
+                  }`}
+                >
+                  我的统计
+                </button>
+              </nav>
             </div>
 
+            {/* 刷新按钮 */}
             <button
               onClick={handleRefreshClick}
               disabled={loading}
-              className='px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white text-sm rounded-lg transition-colors flex items-center space-x-2 ml-4'
+              className='px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white text-sm rounded-lg transition-colors flex items-center space-x-2 mb-0.5'
             >
               <svg
                 className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`}
@@ -990,6 +1155,111 @@ const PlayStatsPage: React.FC = () => {
                 </div>
               </div>
 
+              {/* 即将上映卡片 */}
+              {(upcomingInitialized || upcomingLoading) && (
+                <div className="mb-8">
+                  <div className="bg-gradient-to-r from-purple-500 to-pink-500 rounded-lg p-6 text-white shadow-lg">
+                    <div className="flex items-center justify-between mb-4">
+                      <div>
+                        <h3 className="text-lg font-bold flex items-center gap-2">
+                          📅 即将上映
+                        </h3>
+                        <p className="text-purple-100 text-sm mt-1">
+                          {upcomingLoading ? '正在获取最新内容...' : `未来两周将有 ${upcomingReleases.length} 部新内容上线`}
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => router.push('/release-calendar')}
+                        className="bg-white/20 hover:bg-white/30 px-4 py-2 rounded-lg text-sm transition-colors flex items-center gap-2"
+                      >
+                        <span>查看全部</span>
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7"/>
+                        </svg>
+                      </button>
+                    </div>
+
+                    {/* 横向滚动的发布项目 */}
+                    <div className="flex space-x-4 overflow-x-auto pb-2 scrollbar-hide">
+                      {upcomingLoading ? (
+                        // Loading skeleton
+                        Array.from({ length: 3 }).map((_, index) => (
+                          <div key={`loading-${index}`} className="min-w-[140px] bg-white/10 backdrop-blur-sm rounded-lg p-3 border border-white/20 animate-pulse">
+                            <div className="h-4 bg-white/20 rounded mb-2"></div>
+                            <div className="h-3 bg-white/20 rounded mb-2 w-3/4"></div>
+                            <div className="h-3 bg-white/20 rounded mb-2 w-1/2"></div>
+                            <div className="h-3 bg-white/20 rounded w-2/3"></div>
+                          </div>
+                        ))
+                      ) : (
+                        <div className="flex flex-col gap-6">
+                          {/* 电影部分 */}
+                          {upcomingReleases.filter(item => item.type === 'movie').length > 0 && (
+                            <div className="w-full">
+                              <div className="text-sm font-medium text-purple-100 mb-3 flex items-center gap-2 border-b border-white/20 pb-2">
+                                🎬 电影
+                              </div>
+                              <div className="flex space-x-3 overflow-x-auto pb-1 w-full">
+                                {upcomingReleases.filter(item => item.type === 'movie').slice(0, 7).map(item => (
+                                  <div key={item.id} className="min-w-[140px] bg-white/10 backdrop-blur-sm rounded-lg p-3 border border-white/20 flex-shrink-0">
+                                    <div className="text-sm font-medium mb-1 line-clamp-2" title={item.title}>
+                                      {item.title}
+                                    </div>
+                                    <div className="text-xs text-purple-200 mb-1">
+                                      {new Date(item.releaseDate).toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' })}
+                                    </div>
+                                    <div className="text-xs text-purple-200 truncate">
+                                      {item.region}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* 电视剧部分 */}
+                          {upcomingReleases.filter(item => item.type === 'tv').length > 0 && (
+                            <div className="w-full">
+                              <div className="text-sm font-medium text-purple-100 mb-3 flex items-center gap-2 border-b border-white/20 pb-2">
+                                📺 电视剧
+                              </div>
+                              <div className="flex space-x-3 overflow-x-auto pb-1 w-full">
+                                {upcomingReleases.filter(item => item.type === 'tv').slice(0, 7).map(item => (
+                                  <div key={item.id} className="min-w-[140px] bg-white/10 backdrop-blur-sm rounded-lg p-3 border border-white/20 flex-shrink-0">
+                                    <div className="text-sm font-medium mb-1 line-clamp-2" title={item.title}>
+                                      {item.title}
+                                    </div>
+                                    <div className="text-xs text-purple-200 mb-1">
+                                      {new Date(item.releaseDate).toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' })}
+                                    </div>
+                                    <div className="text-xs text-purple-200 truncate">
+                                      {item.region}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* 空状态提示 */}
+                          {upcomingReleases.length === 0 && !upcomingLoading && upcomingInitialized && (
+                            <div className="text-center py-6">
+                              <div className="text-purple-100 text-sm mb-2">📅</div>
+                              <div className="text-purple-100 text-sm">
+                                暂无即将上映的内容
+                              </div>
+                              <div className="text-purple-200 text-xs mt-1">
+                                数据获取可能失败，请尝试刷新
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* 有新集数的剧集 */}
               {watchingUpdates && watchingUpdates.updatedSeries.filter(series => series.hasNewEpisode).length > 0 && (
                 <div className="mb-8">
@@ -1275,7 +1545,7 @@ const PlayStatsPage: React.FC = () => {
       <PageLayout activePath="/play-stats">
         <div className='max-w-6xl mx-auto px-4 py-8'>
           {/* 页面标题和刷新按钮 */}
-          <div className='flex justify-between items-center mb-8'>
+          <div className='flex justify-between items-start mb-8'>
             <div>
               <h1 className='text-3xl font-bold text-gray-900 dark:text-white'>
                 个人统计
@@ -1284,11 +1554,12 @@ const PlayStatsPage: React.FC = () => {
                 查看您的个人播放记录和统计数据
               </p>
             </div>
-            <button
-              onClick={handleRefreshClick}
-              disabled={loading}
-              className='px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white text-sm rounded-lg transition-colors flex items-center space-x-2'
-            >
+            <div className='mt-10'>
+              <button
+                onClick={handleRefreshClick}
+                disabled={loading}
+                className='px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white text-sm rounded-lg transition-colors flex items-center space-x-2'
+              >
               <svg
                 className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`}
                 fill='none'
@@ -1304,6 +1575,7 @@ const PlayStatsPage: React.FC = () => {
               </svg>
               <span>{loading ? '刷新中...' : '刷新数据'}</span>
             </button>
+            </div>
           </div>
 
           {/* 错误提示 */}
@@ -1453,6 +1725,110 @@ const PlayStatsPage: React.FC = () => {
               )}
             </div>
           </div>
+
+          {/* 即将上映卡片 */}
+          {(upcomingInitialized || upcomingLoading) && (
+            <div className="mb-8">
+              <div className="bg-gradient-to-r from-purple-500 to-pink-500 rounded-lg p-6 text-white shadow-lg">
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <h3 className="text-lg font-bold flex items-center gap-2">
+                      📅 即将上映
+                    </h3>
+                    <p className="text-purple-100 text-sm mt-1">
+                      {upcomingLoading ? '正在获取最新内容...' : `未来两周将有 ${upcomingReleases.length} 部新内容上线`}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => router.push('/release-calendar')}
+                    className="bg-white/20 hover:bg-white/30 px-4 py-2 rounded-lg text-sm transition-colors flex items-center gap-2"
+                  >
+                    <span>查看全部</span>
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7"/>
+                    </svg>
+                  </button>
+                </div>
+
+                {/* 垂直分组显示：电影一行，电视剧一行 */}
+                <div>
+                  {upcomingLoading ? (
+                    // Loading skeleton
+                    Array.from({ length: 3 }).map((_, index) => (
+                      <div key={`loading-${index}`} className="min-w-[140px] bg-white/10 backdrop-blur-sm rounded-lg p-3 border border-white/20 animate-pulse">
+                        <div className="h-4 bg-white/20 rounded mb-2"></div>
+                        <div className="h-3 bg-white/20 rounded mb-2 w-1/2"></div>
+                        <div className="h-3 bg-white/20 rounded w-2/3"></div>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="flex flex-col gap-6">
+                      {/* 电影部分 */}
+                      {upcomingReleases.filter(item => item.type === 'movie').length > 0 && (
+                        <div className="w-full">
+                          <div className="text-sm font-medium text-purple-100 mb-3 flex items-center gap-2 border-b border-white/20 pb-2">
+                            🎬 电影
+                          </div>
+                          <div className="flex space-x-3 overflow-x-auto pb-1 w-full">
+                            {upcomingReleases.filter(item => item.type === 'movie').slice(0, 7).map(item => (
+                              <div key={item.id} className="min-w-[140px] bg-white/10 backdrop-blur-sm rounded-lg p-3 border border-white/20 flex-shrink-0">
+                                <div className="text-sm font-medium mb-1 line-clamp-2" title={item.title}>
+                                  {item.title}
+                                </div>
+                                <div className="text-xs text-purple-200 mb-1">
+                                  {new Date(item.releaseDate).toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' })}
+                                </div>
+                                <div className="text-xs text-purple-200 truncate">
+                                  {item.region}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* 电视剧部分 */}
+                      {upcomingReleases.filter(item => item.type === 'tv').length > 0 && (
+                        <div className="w-full">
+                          <div className="text-sm font-medium text-purple-100 mb-3 flex items-center gap-2 border-b border-white/20 pb-2">
+                            📺 电视剧
+                          </div>
+                          <div className="flex space-x-3 overflow-x-auto pb-1 w-full">
+                            {upcomingReleases.filter(item => item.type === 'tv').slice(0, 7).map(item => (
+                              <div key={item.id} className="min-w-[140px] bg-white/10 backdrop-blur-sm rounded-lg p-3 border border-white/20 flex-shrink-0">
+                                <div className="text-sm font-medium mb-1 line-clamp-2" title={item.title}>
+                                  {item.title}
+                                </div>
+                                <div className="text-xs text-purple-200 mb-1">
+                                  {new Date(item.releaseDate).toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' })}
+                                </div>
+                                <div className="text-xs text-purple-200 truncate">
+                                  {item.region}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* 空状态提示 */}
+                      {upcomingReleases.length === 0 && !upcomingLoading && upcomingInitialized && (
+                        <div className="text-center py-6">
+                          <div className="text-purple-100 text-sm mb-2">📅</div>
+                          <div className="text-purple-100 text-sm">
+                            暂无即将上映的内容
+                          </div>
+                          <div className="text-purple-200 text-xs mt-1">
+                            数据获取可能失败，请尝试刷新
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* 有新集数的剧集 */}
           {watchingUpdates && watchingUpdates.updatedSeries.filter(series => series.hasNewEpisode).length > 0 && (
