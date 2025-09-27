@@ -41,7 +41,7 @@ interface VirtualSearchGridProps {
 // 渐进式加载配置
 const INITIAL_BATCH_SIZE = 12;
 const LOAD_MORE_BATCH_SIZE = 8;
-const LOAD_MORE_THRESHOLD = 5; // 距离底部还有5行时开始加载
+const LOAD_MORE_THRESHOLD = 5; // 恢复原来的阈值，避免过度触发
 
 export const VirtualSearchGrid: React.FC<VirtualSearchGridProps> = ({
   allResults,
@@ -135,15 +135,15 @@ export const VirtualSearchGrid: React.FC<VirtualSearchGridProps> = ({
   }: any) => {
     const index = rowIndex * cellColumnCount + columnIndex;
     
-    // 如果超出显示范围，返回空
+    // 如果超出显示范围，返回隐藏的占位符
     if (index >= cellDisplayItemCount) {
-      return <div style={style} />;
+      return <div style={{ ...style, visibility: 'hidden' }} />;
     }
 
     const item = cellDisplayData[index];
-    
+
     if (!item) {
-      return <div style={style} />;
+      return <div style={{ ...style, visibility: 'hidden' }} />;
     }
 
     // 根据视图模式渲染不同内容
@@ -240,8 +240,6 @@ export const VirtualSearchGrid: React.FC<VirtualSearchGridProps> = ({
           }}
           columnCount={columnCount}
           columnWidth={itemWidth + 16}
-          defaultHeight={gridHeight}
-          defaultWidth={containerWidth}
           rowCount={rowCount}
           rowHeight={itemHeight + 16}
           overscanCount={1}
@@ -250,11 +248,17 @@ export const VirtualSearchGrid: React.FC<VirtualSearchGridProps> = ({
           aria-label={`搜索结果列表 "${searchQuery}"，共${displayItemCount}个结果，当前视图：${viewMode === 'agg' ? '聚合视图' : '全部结果'}`}
           aria-rowcount={rowCount}
           aria-colcount={columnCount}
+          className="bg-white dark:bg-gray-900"
           style={{
-            overflowX: 'hidden',
-            overflowY: 'auto',
+            // react-window 2.1.2优化：明确设置尺寸以避免ResizeObserver
+            height: gridHeight,
+            width: containerWidth,
+            // 根据源码：必须设置overflow auto才能正确滚动
+            overflow: 'auto',
             // 确保不创建新的stacking context，让菜单能正确显示在最顶层
             isolation: 'auto',
+            // 平滑滚动优化
+            scrollBehavior: 'smooth',
             // 单行网格优化：防止高度异常
             ...(isSingleRow && {
               minHeight: itemHeight + 16,
@@ -262,13 +266,12 @@ export const VirtualSearchGrid: React.FC<VirtualSearchGridProps> = ({
             }),
           }}
           onCellsRendered={(visibleCells, allCells) => {
-            // 使用react-window v2.1.0的新API - 优化性能：
-            // 1. visibleCells: 真实可见的单元格范围  
+            // 使用react-window v2.1.2的API：
+            // 1. visibleCells: 真实可见的单元格范围
             // 2. allCells: 包含overscan的所有渲染单元格范围
             const { rowStopIndex: visibleRowStopIndex } = visibleCells;
-            const { rowStopIndex: allRowStopIndex } = allCells;
-            
-            // 性能优化：只基于真实可见区域判断加载，避免overscan区域误触发
+
+            // 简化逻辑：基于可见行检测
             if (visibleRowStopIndex >= rowCount - LOAD_MORE_THRESHOLD && hasNextPage && !isLoadingMore) {
               loadMoreItems();
             }
