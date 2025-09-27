@@ -199,11 +199,6 @@ export const VirtualSearchGrid: React.FC<VirtualSearchGridProps> = ({
     }
   }, []);
 
-  // 计算网格高度
-  const gridHeight = Math.min(
-    typeof window !== 'undefined' ? window.innerHeight - 200 : 600,
-    800
-  );
 
   return (
     <div ref={containerRef} className='w-full'>
@@ -242,19 +237,13 @@ export const VirtualSearchGrid: React.FC<VirtualSearchGridProps> = ({
           columnWidth={itemWidth + 16}
           rowCount={rowCount}
           rowHeight={itemHeight + 16}
-          overscanCount={1}
+          overscanCount={3}
           // 添加ARIA支持提升无障碍体验
           role="grid"
           aria-label={`搜索结果列表 "${searchQuery}"，共${displayItemCount}个结果，当前视图：${viewMode === 'agg' ? '聚合视图' : '全部结果'}`}
           aria-rowcount={rowCount}
           aria-colcount={columnCount}
-          className="bg-white dark:bg-gray-900"
           style={{
-            // react-window 2.1.2优化：明确设置尺寸以避免ResizeObserver
-            height: gridHeight,
-            width: containerWidth,
-            // 根据源码：必须设置overflow auto才能正确滚动
-            overflow: 'auto',
             // 确保不创建新的stacking context，让菜单能正确显示在最顶层
             isolation: 'auto',
             // 平滑滚动优化
